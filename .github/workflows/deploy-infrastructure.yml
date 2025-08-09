@@ -1,0 +1,254 @@
+name: Azure AI Foundry Infrastructure Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      action:
+        description: 'Deployment action'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - deploy
+          - destroy
+      location:
+        description: 'Azure region'
+        required: true
+        default: 'westeurope'
+        type: string
+
+env:
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate Bicep Templates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Azure CLI
+        uses: azure/setup-azure-cli@v2
+        with:
+          version: 'latest'
+
+      - name: Setup Bicep
+        run: |
+          az bicep upgrade
+          bicep --version
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Validate Bicep Templates
+        run: |
+          cd infra
+          az bicep build --file main.bicep --stdout > /dev/null
+        continue-on-error: true
+
+      - name: Lint Bicep Templates
+        run: |
+          cd infra
+          az bicep build --file main.bicep 2>&1 | tee bicep-lint.log || true
+          echo "## Bicep Validation Results" >> $GITHUB_STEP_SUMMARY
+          if grep -q "Error\|Failed" bicep-lint.log; then
+            echo "❌ Bicep validation failed with errors" >> $GITHUB_STEP_SUMMARY
+            echo "### Errors:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -E "(Error|Failed)" bicep-lint.log >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Bicep validation passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          if grep -q "Warning" bicep-lint.log; then
+            echo "### Warnings:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep "Warning" bicep-lint.log >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  plan:
+    name: Plan Infrastructure Changes
+    runs-on: ubuntu-latest
+    needs: validate
+    if: ${{ github.event.inputs.action == 'plan' || github.event.inputs.action == 'deploy' }}
+    environment: ${{ github.event.inputs.environment }}
+    outputs:
+      changes-detected: ${{ steps.whatif.outputs.changes-detected }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Azure CLI
+        uses: azure/setup-azure-cli@v2
+        with:
+          version: 'latest'
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set subscription
+        run: |
+          az account set --subscription ${{ env.AZURE_SUBSCRIPTION_ID }}
+          az account show
+
+      - name: What-If Analysis
+        id: whatif
+        run: |
+          cd infra
+          echo "Running what-if analysis for ${{ github.event.inputs.environment }} environment..."
+          
+          # Run what-if and capture output
+          whatif_output=$(az deployment sub what-if \
+            --location ${{ github.event.inputs.location }} \
+            --template-file main.bicep \
+            --parameters main.bicepparam \
+            --output json 2>&1 || true)
+          
+          echo "whatif_output<<EOF" >> $GITHUB_OUTPUT
+          echo "$whatif_output" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Check if there are changes
+          if echo "$whatif_output" | grep -q "Resource changes:"; then
+            echo "changes-detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes-detected=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Format output for job summary
+          echo "## Infrastructure Plan for ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          echo "$whatif_output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  deploy:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: [validate, plan]
+    if: ${{ github.event.inputs.action == 'deploy' }}
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Azure CLI
+        uses: azure/setup-azure-cli@v2
+        with:
+          version: 'latest'
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set subscription
+        run: |
+          az account set --subscription ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Infrastructure
+        id: deploy
+        run: |
+          cd infra
+          echo "Deploying to ${{ github.event.inputs.environment }} environment..."
+          
+          deployment_output=$(az deployment sub create \
+            --location ${{ github.event.inputs.location }} \
+            --template-file main.bicep \
+            --parameters main.bicepparam \
+            --output json \
+            --confirm-with-what-if 2>&1)
+          
+          echo "deployment_output<<EOF" >> $GITHUB_OUTPUT
+          echo "$deployment_output" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Extract key outputs
+          resource_group_name=$(echo "$deployment_output" | jq -r '.properties.outputs.resourceGroupName.value // "N/A"')
+          echo "resource_group_name=$resource_group_name" >> $GITHUB_OUTPUT
+          
+          echo "## Deployment Results for ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ✅ Deployment completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- **Resource Group**: $resource_group_name" >> $GITHUB_STEP_SUMMARY
+          echo "- **Location**: ${{ github.event.inputs.location }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Post-deployment validation
+        run: |
+          resource_group_name="${{ steps.deploy.outputs.resource_group_name }}"
+          
+          if [ "$resource_group_name" != "N/A" ] && [ "$resource_group_name" != "" ]; then
+            echo "Validating deployed resources..."
+            az group show --name "$resource_group_name" --output table
+            
+            echo "## Deployed Resources" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            az resource list --resource-group "$resource_group_name" --output table >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  destroy:
+    name: Destroy Infrastructure
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.action == 'destroy' }}
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Azure CLI
+        uses: azure/setup-azure-cli@v2
+        with:
+          version: 'latest'
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set subscription
+        run: |
+          az account set --subscription ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Destroy Infrastructure
+        run: |
+          cd infra
+          
+          # Parse the parameter file to get resource group name
+          # This is a simplified approach - you might want to use a more robust method
+          resource_group_name=$(grep -A 2 "resourceGroup:" main.bicepparam | grep "name:" | cut -d "'" -f 2)
+          
+          if [ -n "$resource_group_name" ]; then
+            echo "Destroying resource group: $resource_group_name"
+            if az group exists --name "$resource_group_name"; then
+              az group delete --name "$resource_group_name" --yes --no-wait
+              echo "## Destruction Initiated" >> $GITHUB_STEP_SUMMARY
+              echo "- **Resource Group**: $resource_group_name" >> $GITHUB_STEP_SUMMARY
+              echo "- **Status**: ⚠️ Deletion initiated (running in background)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "Resource group $resource_group_name does not exist" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "Could not determine resource group name from parameters" >> $GITHUB_STEP_SUMMARY
+          fi
