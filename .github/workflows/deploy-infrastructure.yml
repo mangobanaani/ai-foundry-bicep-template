@@ -21,6 +21,11 @@ on:
           - plan
           - deploy
           - destroy
+      confirm_destroy:
+        description: 'Type DESTROY to confirm destruction (required for prod)'
+        required: false
+        default: ''
+        type: string
       location:
         description: 'Azure region'
         required: true
@@ -212,6 +217,14 @@ jobs:
     if: ${{ github.event.inputs.action == 'destroy' }}
     environment: ${{ github.event.inputs.environment }}
     steps:
+      - name: Production safety check
+        if: ${{ github.event.inputs.environment == 'prod' }}
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "::error::Production destroy requires confirm_destroy input set to 'DESTROY'"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -229,11 +242,10 @@ jobs:
         run: |
           az account set --subscription ${{ env.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Destroy Infrastructure
+      - name: Determine resource group
+        id: rg
         run: |
           cd infra
-
-          # Use bicep to evaluate the parameter file and extract the resource group name
           param_file="environments/${{ github.event.inputs.environment }}.bicepparam"
           resource_group_name=$(az deployment sub what-if \
             --location ${{ github.event.inputs.location }} \
@@ -246,17 +258,46 @@ jobs:
             resource_group_name=$(grep -oP "name:\s*'([^']+)'" "$param_file" | head -1 | grep -oP "'[^']+'" | tr -d "'")
           fi
 
-          if [ -n "$resource_group_name" ]; then
-            echo "Destroying resource group: $resource_group_name"
-            if az group exists --name "$resource_group_name"; then
-              az group delete --name "$resource_group_name" --yes --no-wait
-              echo "## Destruction Initiated" >> $GITHUB_STEP_SUMMARY
-              echo "- **Resource Group**: $resource_group_name" >> $GITHUB_STEP_SUMMARY
-              echo "- **Status**: Deletion initiated (running in background)" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "Resource group $resource_group_name does not exist" >> $GITHUB_STEP_SUMMARY
-            fi
-          else
+          if [ -z "$resource_group_name" ]; then
             echo "::error::Could not determine resource group name from $param_file"
             exit 1
+          fi
+          echo "name=$resource_group_name" >> $GITHUB_OUTPUT
+
+      - name: Check for resource locks
+        id: locks
+        run: |
+          rg_name="${{ steps.rg.outputs.name }}"
+          if az group exists --name "$rg_name" | grep -q true; then
+            locks=$(az lock list --resource-group "$rg_name" --output json 2>/dev/null || echo "[]")
+            lock_count=$(echo "$locks" | jq length)
+            if [ "$lock_count" -gt 0 ]; then
+              echo "::warning::Resource group $rg_name has $lock_count lock(s). Remove locks before destroying."
+              echo "$locks" | jq -r '.[] | "  - \(.name) (\(.properties.level)): \(.properties.notes // "no notes")"'
+              echo "has_locks=true" >> $GITHUB_OUTPUT
+            else
+              echo "has_locks=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "has_locks=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Abort if locked
+        if: ${{ steps.locks.outputs.has_locks == 'true' }}
+        run: |
+          echo "::error::Cannot destroy resource group with active locks. Remove locks first."
+          exit 1
+
+      - name: Destroy Infrastructure
+        run: |
+          rg_name="${{ steps.rg.outputs.name }}"
+          if az group exists --name "$rg_name" | grep -q true; then
+            echo "Destroying resource group: $rg_name"
+            az group delete --name "$rg_name" --yes --no-wait
+            echo "## Destruction Initiated" >> $GITHUB_STEP_SUMMARY
+            echo "- **Resource Group**: $rg_name" >> $GITHUB_STEP_SUMMARY
+            echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status**: Deletion initiated (running in background)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Resource group $rg_name does not exist" >> $GITHUB_STEP_SUMMARY
           fi
