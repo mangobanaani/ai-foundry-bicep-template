@@ -3,12 +3,6 @@
 
 @description('Creates Azure AI Services (formerly Cognitive Services) for AI Foundry.')
 param config object
-@description('VNET resource ID for private networking (currently unused)')
-param vnetResourceId string = ''
-@description('Subnet resource ID for private networking (currently unused)')
-param subnetResourceId string = ''
-@description('Private DNS zone IDs for private networking (currently unused)')
-param privateDnsZoneIds array = []
 
 var cog = config.cognitive
 var location = config.location
