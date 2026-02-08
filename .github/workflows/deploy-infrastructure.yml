@@ -232,21 +232,31 @@ jobs:
       - name: Destroy Infrastructure
         run: |
           cd infra
-          
-          # Parse the parameter file to get resource group name
-          # This is a simplified approach - you might want to use a more robust method
-          resource_group_name=$(grep -A 2 "resourceGroup:" main.bicepparam | grep "name:" | cut -d "'" -f 2)
-          
+
+          # Use bicep to evaluate the parameter file and extract the resource group name
+          param_file="environments/${{ github.event.inputs.environment }}.bicepparam"
+          resource_group_name=$(az deployment sub what-if \
+            --location ${{ github.event.inputs.location }} \
+            --template-file main.bicep \
+            --parameters "$param_file" \
+            --output json 2>/dev/null | jq -r '.properties.parameters.config.value.resourceGroup.name // empty')
+
+          # Fallback: extract from param file using grep
+          if [ -z "$resource_group_name" ]; then
+            resource_group_name=$(grep -oP "name:\s*'([^']+)'" "$param_file" | head -1 | grep -oP "'[^']+'" | tr -d "'")
+          fi
+
           if [ -n "$resource_group_name" ]; then
             echo "Destroying resource group: $resource_group_name"
             if az group exists --name "$resource_group_name"; then
               az group delete --name "$resource_group_name" --yes --no-wait
               echo "## Destruction Initiated" >> $GITHUB_STEP_SUMMARY
               echo "- **Resource Group**: $resource_group_name" >> $GITHUB_STEP_SUMMARY
-              echo "- **Status**: ⚠️ Deletion initiated (running in background)" >> $GITHUB_STEP_SUMMARY
+              echo "- **Status**: Deletion initiated (running in background)" >> $GITHUB_STEP_SUMMARY
             else
               echo "Resource group $resource_group_name does not exist" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "Could not determine resource group name from parameters" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Could not determine resource group name from $param_file"
+            exit 1
           fi
