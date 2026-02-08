@@ -137,6 +137,7 @@ param config = {
       ipRules: []
       virtualNetworkRules: []
     }
+    deployments: []
   }
   ai: {
     hub: {
