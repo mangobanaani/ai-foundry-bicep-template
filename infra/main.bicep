@@ -24,4 +24,26 @@ module rgDeploy 'modules/rg/main.bicep' = {
   }
 }
 
+// Resource group
 output resourceGroupName string = rg.name
+
+// Resource names
+output storageAccountName string = rgDeploy.outputs.storageAccountName
+output keyVaultName string = rgDeploy.outputs.keyVaultName
+output acrName string = rgDeploy.outputs.acrName
+output cognitiveAccountName string = rgDeploy.outputs.cognitiveAccountName
+output aiFoundryHubName string = rgDeploy.outputs.aiFoundryHubName
+output aiFoundryProjectName string = rgDeploy.outputs.aiFoundryProjectName
+
+// Resource IDs
+output aiFoundryHubId string = rgDeploy.outputs.aiFoundryHubId
+output aiFoundryProjectId string = rgDeploy.outputs.aiFoundryProjectId
+
+// Endpoints
+output keyVaultUri string = rgDeploy.outputs.keyVaultUri
+output cognitiveEndpoint string = rgDeploy.outputs.cognitiveEndpoint
+output acrLoginServer string = rgDeploy.outputs.acrLoginServer
+
+// Principal IDs
+output hubPrincipalId string = rgDeploy.outputs.hubPrincipalId
+output projectPrincipalId string = rgDeploy.outputs.projectPrincipalId

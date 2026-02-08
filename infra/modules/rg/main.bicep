@@ -5,7 +5,7 @@ param config object
 param userObjectId string = ''
 
 // Deploy user-assigned managed identity (if enabled)
-module identity '../shared/identity.bicep' = if (config.identity.?userAssigned.?enabled == true) {
+module identity '../shared/identity.bicep' = if (contains(config.identity, 'userAssigned') && contains(config.identity.userAssigned, 'enabled') && config.identity.userAssigned.enabled == true) {
   name: 'identity'
   params: {
     config: config
@@ -79,6 +79,38 @@ module aiFoundry '../shared/ai-foundry.bicep' = {
   ]
 }
 
+// Deploy private endpoints for PaaS services (if networking enabled)
+module privateEndpoints '../shared/private-endpoints.bicep' = if (config.networking.enabled == true) {
+  name: 'private-endpoints'
+  params: {
+    config: config
+    subnetId: networking.outputs.subnetId
+    privateDnsZoneIds: networking.outputs.privateDnsZoneIds
+  }
+  dependsOn: [
+    storage
+    keyVault
+    acr
+    cognitive
+  ]
+}
+
+// Deploy resource lock (if enabled)
+module locks '../shared/locks.bicep' = {
+  name: 'locks'
+  params: {
+    config: config
+  }
+}
+
+// Deploy budget alerts (if enabled)
+module budget '../shared/budget.bicep' = {
+  name: 'budget'
+  params: {
+    config: config
+  }
+}
+
 // Deploy RBAC assignments for secure access
 module rbac '../shared/rbac.bicep' = {
   name: 'rbac'
@@ -98,15 +130,67 @@ module rbac '../shared/rbac.bicep' = {
   ]
 }
 
-// Outputs
+// Outputs - Resource names
 @description('Storage account name')
 output storageAccountName string = storage.outputs.storageAccountName
 
 @description('Key Vault name')
 output keyVaultName string = keyVault.outputs.keyVaultName
 
+@description('Container Registry name')
+output acrName string = config.acr.enabled == true ? acr.outputs.acrName : ''
+
+@description('Cognitive Services account name')
+output cognitiveAccountName string = config.cognitive.enabled == true ? cognitive.outputs.name : ''
+
+@description('AI Foundry Hub name')
+output aiFoundryHubName string = aiFoundry.outputs.hubName
+
+@description('AI Foundry Project name')
+output aiFoundryProjectName string = aiFoundry.outputs.projectName
+
+// Outputs - Resource IDs
+@description('Storage account ID')
+output storageAccountId string = storage.outputs.storageId
+
+@description('Key Vault ID')
+output keyVaultId string = keyVault.outputs.keyVaultId
+
+@description('Container Registry ID')
+output acrId string = config.acr.enabled == true ? acr.outputs.acrId : ''
+
+@description('Cognitive Services account ID')
+output cognitiveAccountId string = config.cognitive.enabled == true ? cognitive.outputs.id : ''
+
 @description('AI Foundry Hub ID')
 output aiFoundryHubId string = aiFoundry.outputs.hubId
 
 @description('AI Foundry Project ID')
 output aiFoundryProjectId string = aiFoundry.outputs.projectId
+
+// Outputs - Endpoints
+@description('Key Vault URI')
+output keyVaultUri string = 'https://${config.keyVault.name}${environment().suffixes.keyvaultDns}'
+
+@description('Cognitive Services endpoint')
+output cognitiveEndpoint string = config.cognitive.enabled == true ? cognitive.outputs.endpoint : ''
+
+@description('Container Registry login server')
+output acrLoginServer string = config.acr.enabled == true ? '${config.acr.name}.azurecr.io' : ''
+
+// Outputs - Principal IDs for automation
+@description('AI Foundry Hub principal ID')
+output hubPrincipalId string = aiFoundry.outputs.hubPrincipalId
+
+@description('AI Foundry Project principal ID')
+output projectPrincipalId string = aiFoundry.outputs.projectPrincipalId
+
+@description('Storage account principal ID')
+output storagePrincipalId string = storage.outputs.storagePrincipalId
+
+// Outputs - Feature flags
+@description('Whether resource lock is deployed')
+output lockDeployed bool = locks.outputs.deployed
+
+@description('Whether budget alerts are deployed')
+output budgetDeployed bool = budget.outputs.deployed

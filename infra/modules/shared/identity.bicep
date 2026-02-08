@@ -5,11 +5,13 @@ var identityCfg = config.identity
 var location = config.location
 var tags = config.tags ?? {}
 
-resource uami 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (identityCfg?.userAssigned?.enabled == true) {
-  name: identityCfg.userAssigned.name
+var uamiEnabled = contains(identityCfg, 'userAssigned') && contains(identityCfg.userAssigned, 'enabled') && identityCfg.userAssigned.enabled == true
+
+resource uami 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (uamiEnabled) {
+  name: uamiEnabled ? identityCfg.userAssigned.name : 'placeholder'
   location: location
   tags: tags
 }
 
-output principalId string = identityCfg?.userAssigned?.enabled == true ? uami.properties.principalId : ''
-output userAssignedIdentityId string = identityCfg?.userAssigned?.enabled == true ? uami.id : ''
+output principalId string = uamiEnabled ? uami.properties.principalId : ''
+output userAssignedIdentityId string = uamiEnabled ? uami.id : ''
