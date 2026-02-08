@@ -173,5 +173,5 @@ resource userKeyVaultSecretsUserRoleAssignment 'Microsoft.Authorization/roleAssi
   }
 }
 
-@description('Number of role assignments created')
-output roleAssignmentsCreated int = 0 // This is just a placeholder - actual count would be conditional
+@description('Indicates RBAC module completed successfully')
+output deployed bool = true
