@@ -79,6 +79,16 @@ param config = {
     disableLocalAuth: false // Allow API keys for dev testing
     customSubDomainName: 'aif-dev-001'
   }
+  locks: {
+    enabled: false // No resource lock in dev
+  }
+  budget: {
+    enabled: true
+    amount: 500
+    contactEmails: [
+      'devops-team@company.com'
+    ]
+  }
   ai: {
     hub: {
       name: 'aih-aif-dev-001'

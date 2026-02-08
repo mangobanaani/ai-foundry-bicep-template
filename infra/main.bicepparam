@@ -79,6 +79,12 @@ param config = {
     customSubDomainName: 'aif-dev-default'
     deployments: []
   }
+  locks: {
+    enabled: false
+  }
+  budget: {
+    enabled: false
+  }
   ai: {
     hub: {
       name: 'aih-aif-dev-001'

@@ -139,6 +139,19 @@ param config = {
     }
     deployments: []
   }
+  locks: {
+    enabled: true
+    name: 'rg-prod-delete-lock'
+    notes: 'Production resource group - remove lock before deletion'
+  }
+  budget: {
+    enabled: true
+    amount: 5000
+    contactEmails: [
+      'devops-team@company.com'
+      'finance@company.com'
+    ]
+  }
   ai: {
     hub: {
       name: 'aih-aif-prod-001'
