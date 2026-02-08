@@ -135,7 +135,7 @@ resource userCognitiveServicesUserRoleAssignment 'Microsoft.Authorization/roleAs
   }
 }
 
-resource userCognitiveServicesOpenAIUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(userObjectId) && config.cognitive.kind == 'OpenAI') {
+resource userCognitiveServicesOpenAIUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(userObjectId) && (config.cognitive.kind == 'OpenAI' || config.cognitive.kind == 'AIServices')) {
   name: guid(resourceGroup().id, userObjectId, cognitiveServicesOpenAIUserRole.id, 'user-openai')
   properties: {
     roleDefinitionId: cognitiveServicesOpenAIUserRole.id
@@ -159,6 +159,16 @@ resource projectAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2
   properties: {
     roleDefinitionId: acrPullRole.id
     principalId: projectPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Hub Key Vault Secrets User role (needed for AI Hub to access Key Vault)
+resource hubKeyVaultSecretsUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(hubPrincipalId) && (config.keyVault.enableRbacAuthorization ?? true)) {
+  name: guid(resourceGroup().id, hubPrincipalId, keyVaultSecretsUserRole.id, 'hub-keyvault')
+  properties: {
+    roleDefinitionId: keyVaultSecretsUserRole.id
+    principalId: hubPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
