@@ -123,7 +123,7 @@ jobs:
           whatif_output=$(az deployment sub what-if \
             --location ${{ github.event.inputs.location }} \
             --template-file main.bicep \
-            --parameters main.bicepparam \
+            --parameters environments/${{ github.event.inputs.environment }}.bicepparam \
             --output json 2>&1 || true)
           
           echo "whatif_output<<EOF" >> $GITHUB_OUTPUT
@@ -176,9 +176,8 @@ jobs:
           deployment_output=$(az deployment sub create \
             --location ${{ github.event.inputs.location }} \
             --template-file main.bicep \
-            --parameters main.bicepparam \
-            --output json \
-            --confirm-with-what-if 2>&1)
+            --parameters environments/${{ github.event.inputs.environment }}.bicepparam \
+            --output json 2>&1)
           
           echo "deployment_output<<EOF" >> $GITHUB_OUTPUT
           echo "$deployment_output" >> $GITHUB_OUTPUT
