@@ -97,19 +97,30 @@ param config = {
   }
   networking: {
     enabled: true // Enable networking for private endpoints
+    newVnet: true
     vnet: {
       name: 'vnet-aif-prod-001'
-      addressSpace: '10.0.0.0/16'
+      addressPrefixes: ['10.0.0.0/16']
+      subnets: [
+        {
+          name: 'snet-ai-services'
+          addressPrefix: '10.0.1.0/24'
+        }
+        {
+          name: 'snet-private-endpoints'
+          addressPrefix: '10.0.2.0/24'
+        }
+      ]
     }
-    subnets: [
-      {
-        name: 'snet-ai-services'
-        addressPrefix: '10.0.1.0/24'
-      }
-      {
-        name: 'snet-private-endpoints'
-        addressPrefix: '10.0.2.0/24'
-      }
+    privateDnsZones: [
+      'privatelink.openai.azure.com'
+      'privatelink.cognitiveservices.azure.com'
+      'privatelink.blob.core.windows.net'
+      'privatelink.queue.core.windows.net'
+      'privatelink.table.core.windows.net'
+      'privatelink.file.core.windows.net'
+      'privatelink.vaultcore.azure.net'
+      'privatelink.azurecr.io'
     ]
   }
   cognitive: {
