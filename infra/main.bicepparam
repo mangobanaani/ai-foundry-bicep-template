@@ -1,11 +1,11 @@
 using 'main.bicep'
 
-// Single source of truth for configuration. Adjust as needed.
+// Default configuration. For environment-specific settings use environments/*.bicepparam.
 param config = {
   location: 'westeurope'
   tags: {
     env: 'dev'
-    owner: 'your-alias'
+    owner: 'devops-team'
     solution: 'ai-foundry'
   }
   resourceGroup: {
@@ -30,9 +30,10 @@ param config = {
     }
   }
   storage: {
-    name: 'stai${uniqueString('dev')}'
+    name: 'stai${uniqueString(subscription().subscriptionId, 'dev')}'
     skuName: 'Standard_LRS'
     allowBlobPublicAccess: false
+    allowSharedKeyAccess: false
     containers: [
       { name: 'data' }
       { name: 'models' }
@@ -41,7 +42,7 @@ param config = {
   }
   keyVault: {
     name: 'kv-aif-dev-001'
-    tenantId: '00000000-0000-0000-0000-000000000000' // Will be auto-detected at deployment
+    tenantId: tenant().tenantId
     skuName: 'standard'
     enableRbacAuthorization: true
     enablePurgeProtection: true
@@ -75,14 +76,8 @@ param config = {
     kind: 'AIServices'
     skuName: 'S0'
     publicNetworkAccess: 'Enabled'
-    deployments: [
-      // Example OpenAI deployments
-      // {
-      //   name: 'gpt-4o-mini'
-      //   model: { format: 'OpenAI', name: 'gpt-4o-mini', version: '2024-07-18' }
-      //   sku: { name: 'Standard', capacity: 50 }
-      // }
-    ]
+    customSubDomainName: 'aif-dev-default'
+    deployments: []
   }
   ai: {
     hub: {
@@ -90,8 +85,9 @@ param config = {
       friendlyName: 'AI Foundry Hub - Development'
       description: 'Azure AI Foundry Hub for development environment'
       publicNetworkAccess: 'Enabled'
-      systemDatastoresAuthMode: 'accessKey'
-      connectionAuthType: 'ApiKey'
+      systemDatastoresAuthMode: 'identity'
+      connectionAuthType: 'AAD'
+      isolationMode: 'Disabled'
     }
     project: {
       name: 'aip-aif-dev-001'
