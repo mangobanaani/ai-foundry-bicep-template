@@ -1,6 +1,25 @@
 @description('Resource group level deployments for AI Foundry solution with enhanced security')
 param config object
 
+@description('Object ID of the user to assign RBAC roles to. Leave empty to skip user role assignments.')
+param userObjectId string = ''
+
+// Deploy user-assigned managed identity (if enabled)
+module identity '../shared/identity.bicep' = if (config.identity.?userAssigned.?enabled == true) {
+  name: 'identity'
+  params: {
+    config: config
+  }
+}
+
+// Deploy networking resources (if enabled)
+module networking '../shared/networking.bicep' = if (config.networking.enabled == true) {
+  name: 'networking'
+  params: {
+    config: config
+  }
+}
+
 // Deploy monitoring resources
 module monitoring '../shared/monitoring.bicep' = {
   name: 'monitoring'
@@ -39,10 +58,10 @@ module cognitive '../shared/cognitive.bicep' = if (config.cognitive.enabled == t
   name: 'cognitive'
   params: {
     config: config
-    vnetResourceId: ''
-    subnetResourceId: ''
-    privateDnsZoneIds: []
   }
+  dependsOn: [
+    networking
+  ]
 }
 
 // Deploy AI Foundry Hub and Project with security hardening
@@ -65,11 +84,11 @@ module rbac '../shared/rbac.bicep' = {
   name: 'rbac'
   params: {
     config: config
-    userObjectId: '' // This should be provided during deployment
+    userObjectId: userObjectId
     hubPrincipalId: aiFoundry.outputs.hubPrincipalId
     projectPrincipalId: aiFoundry.outputs.projectPrincipalId
     aiServicesPrincipalId: config.cognitive.enabled == true ? cognitive.outputs.principalId : ''
-    storageAccountPrincipalId: '' // Storage accounts can have system-assigned identity if needed
+    storageAccountPrincipalId: storage.outputs.storagePrincipalId
     containerRegistryPrincipalId: config.acr.enabled == true ? acr.outputs.acrPrincipalId : ''
   }
   dependsOn: [

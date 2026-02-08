@@ -192,3 +192,4 @@ resource diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-pr
 
 output storageId string = sa.id
 output storageAccountName string = sa.name
+output storagePrincipalId string = sa.identity.principalId

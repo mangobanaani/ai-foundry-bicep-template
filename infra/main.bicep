@@ -3,6 +3,9 @@ targetScope = 'subscription'
 @description('Global configuration for this deployment. Prefer configuring everything via the .bicepparam file.')
 param config object
 
+@description('Object ID of the user to assign RBAC roles to. Leave empty to skip user role assignments.')
+param userObjectId string = ''
+
 var location = config.location
 var tags = config.tags ?? {}
 
@@ -17,6 +20,7 @@ module rgDeploy 'modules/rg/main.bicep' = {
   scope: resourceGroup(rg.name)
   params: {
     config: config
+    userObjectId: userObjectId
   }
 }
 
