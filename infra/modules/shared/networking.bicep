@@ -31,6 +31,20 @@ resource pdnsz 'Microsoft.Network/privateDnsZones@2020-06-01' = [for z in (netCf
   tags: tags
 }]
 
+// Link each DNS zone to the VNet so private endpoint DNS resolution works
+resource dnsVnetLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = [for (z, i) in (netCfg.privateDnsZones ?? []): {
+  parent: pdnsz[i]
+  name: '${replace(z, '.', '-')}-link'
+  location: 'global'
+  tags: tags
+  properties: {
+    virtualNetwork: {
+      id: vnetId
+    }
+    registrationEnabled: false
+  }
+}]
+
 // Compute output values
 var vnetId = netCfg.existingVnetResourceId ?? (netCfg.newVnet == true ? vnet.id : '')
 var subnetId = netCfg.subnetResourceId ?? (netCfg.newVnet == true && length(netCfg.vnet.subnets) > 0 ? resourceId('Microsoft.Network/virtualNetworks/subnets', netCfg.vnet.name, netCfg.vnet.subnets[0].name) : '')
